@@ -1,7 +1,7 @@
 
 
 def extract_segment_features(segment, driver):
-    #converts tel data into one ML row i.e features (dictionary)
+    
 
     # error check
     if len(segment) < 10:

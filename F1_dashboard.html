@@ -1,0 +1,2085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F1 Telemetry Intelligence System</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #e8002d;
+    --red-dark: #a0001f;
+    --blue: #0067ff;
+    --gold: #ffd700;
+    --white: #f5f5f5;
+    --gray: #888;
+    --bg: #050508;
+    --bg2: #0d0d12;
+    --bg3: #12121a;
+    --border: rgba(255,255,255,0.07);
+    --glow-red: 0 0 30px rgba(232,0,45,0.4);
+    --glow-blue: 0 0 30px rgba(0,103,255,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'Rajdhani', sans-serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* CUSTOM CURSOR */
+  .cursor {
+    width: 12px; height: 12px;
+    background: var(--red);
+    border-radius: 50%;
+    position: fixed;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 99999;
+    transition: transform 0.1s ease;
+    mix-blend-mode: screen;
+  }
+  .cursor-ring {
+    width: 36px; height: 36px;
+    border: 1px solid rgba(232,0,45,0.5);
+    border-radius: 50%;
+    position: fixed;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 99998;
+    transition: all 0.15s ease;
+  }
+
+  /* SCANLINE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9997;
+  }
+
+  /* NOISE TEXTURE */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9996;
+    opacity: 0.4;
+  }
+
+  /* ══════════════════════════════
+     HERO
+  ══════════════════════════════ */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Animated racing stripes background */
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(135deg, rgba(232,0,45,0.03) 0%, transparent 50%),
+      linear-gradient(225deg, rgba(0,103,255,0.03) 0%, transparent 50%);
+  }
+
+  .racing-lines {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .racing-line {
+    position: absolute;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(232,0,45,0.4), transparent);
+    animation: race-across 3s linear infinite;
+  }
+
+  @keyframes race-across {
+    0%   { transform: translateX(-100%); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { transform: translateX(100vw); opacity: 0; }
+  }
+
+  /* RPM ring */
+  .rpm-ring {
+    position: absolute;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    border: 1px solid rgba(232,0,45,0.1);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    animation: ring-pulse 4s ease-in-out infinite;
+  }
+  .rpm-ring:nth-child(2) {
+    width: 800px; height: 800px;
+    border-color: rgba(0,103,255,0.06);
+    animation-delay: 1s;
+  }
+  .rpm-ring:nth-child(3) {
+    width: 1000px; height: 1000px;
+    border-color: rgba(232,0,45,0.04);
+    animation-delay: 2s;
+  }
+  @keyframes ring-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+    50% { transform: translate(-50%, -50%) scale(1.02); opacity: 1; }
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(232,0,45,0.1);
+    border: 1px solid rgba(232,0,45,0.3);
+    padding: 6px 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--red);
+    margin-bottom: 32px;
+    animation: fade-up 0.8s ease both;
+  }
+
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--red);
+    border-radius: 50%;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .hero-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(36px, 7vw, 96px);
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -2px;
+    animation: fade-up 0.8s ease 0.1s both;
+  }
+
+  .hero-title .line1 { display: block; color: var(--white); }
+  .hero-title .line2 {
+    display: block;
+    background: linear-gradient(90deg, var(--red), #ff6b00);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero-title .line3 { display: block; color: rgba(255,255,255,0.15); font-size: 0.45em; letter-spacing: 8px; margin-top: 8px; }
+
+  .hero-sub {
+    font-size: 18px;
+    color: var(--gray);
+    font-weight: 300;
+    margin: 24px 0 48px;
+    letter-spacing: 1px;
+    animation: fade-up 0.8s ease 0.2s both;
+  }
+
+  .hero-sub span { color: var(--white); font-weight: 600; }
+
+  .hero-ctas {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    animation: fade-up 0.8s ease 0.3s both;
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .btn-primary {
+    background: var(--red);
+    color: white;
+    border: none;
+    padding: 14px 36px;
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s;
+  }
+  .btn-primary:hover::before { transform: translateX(100%); }
+  .btn-primary:hover { box-shadow: var(--glow-red); transform: translateY(-2px); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--white);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 14px 36px;
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: none;
+    transition: all 0.3s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  .btn-secondary:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+    box-shadow: var(--glow-blue);
+    transform: translateY(-2px);
+  }
+
+  /* Scroll indicator */
+  .scroll-hint {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--gray);
+    font-size: 11px;
+    letter-spacing: 3px;
+    animation: fade-up 1s ease 1s both;
+  }
+  .scroll-hint::after {
+    content: '';
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--red), transparent);
+    animation: scroll-line 1.5s ease-in-out infinite;
+  }
+  @keyframes scroll-line {
+    0%, 100% { transform: scaleY(0); transform-origin: top; }
+    50% { transform: scaleY(1); transform-origin: top; }
+  }
+
+  /* STATS BAR */
+  .stats-bar {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0;
+    overflow: hidden;
+  }
+  .stats-ticker {
+    display: flex;
+    gap: 80px;
+    animation: ticker 20s linear infinite;
+    white-space: nowrap;
+  }
+  @keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+  }
+  .stat-label { color: var(--gray); }
+  .stat-value { color: var(--red); font-weight: bold; }
+  .stat-sep { color: rgba(255,255,255,0.1); }
+
+  /* ══════════════════════════════
+     NAV
+  ══════════════════════════════ */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(5,5,8,0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+  }
+
+  .nav-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 2px;
+  }
+  .nav-logo span { color: var(--red); }
+
+  .nav-tabs {
+    display: flex;
+    gap: 0;
+    list-style: none;
+    height: 100%;
+  }
+
+  .nav-tab {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--gray);
+    cursor: none;
+    transition: color 0.3s;
+    text-transform: uppercase;
+  }
+  .nav-tab::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--red);
+    transform: scaleX(0);
+    transition: transform 0.3s;
+  }
+  .nav-tab:hover, .nav-tab.active { color: var(--white); }
+  .nav-tab:hover::after, .nav-tab.active::after { transform: scaleX(1); }
+
+  .nav-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--gray);
+  }
+  .nav-status-dot {
+    width: 6px; height: 6px;
+    background: #00ff88;
+    border-radius: 50%;
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  /* ══════════════════════════════
+     SECTIONS
+  ══════════════════════════════ */
+  section {
+    padding: 100px 60px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--red);
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 16px;
+  }
+
+  .section-desc {
+    color: var(--gray);
+    font-size: 17px;
+    font-weight: 300;
+    max-width: 600px;
+    line-height: 1.6;
+    margin-bottom: 60px;
+  }
+
+  /* ══════════════════════════════
+     CONFIG PANEL
+  ══════════════════════════════ */
+  .config-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .config-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: linear-gradient(90deg, var(--red), var(--blue));
+  }
+  .config-panel::after {
+    content: 'CONFIG';
+    position: absolute;
+    top: 16px; right: 20px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.05);
+  }
+
+  .config-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr) 1.5fr;
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+
+  .field-group { display: flex; flex-direction: column; gap: 8px; }
+
+  .field-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--gray);
+    text-transform: uppercase;
+  }
+
+  .field-input {
+    background: var(--bg3);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--white);
+    padding: 12px 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    cursor: none;
+  }
+  .field-input:focus {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px var(--red), var(--glow-red);
+  }
+  .field-input::placeholder { color: rgba(255,255,255,0.2); }
+
+  select.field-input option { background: var(--bg3); }
+
+  .driver-row {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 32px;
+  }
+  .vs-badge {
+    text-align: center;
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--red);
+  }
+
+  .driver-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .driver-card.d1 { border-left: 3px solid var(--red); }
+  .driver-card.d2 { border-left: 3px solid var(--blue); }
+  .driver-card:hover { border-color: rgba(255,255,255,0.2); }
+
+  .driver-number {
+    font-family: 'Orbitron', monospace;
+    font-size: 36px;
+    font-weight: 900;
+    opacity: 0.06;
+    position: absolute;
+    top: 8px; right: 12px;
+    line-height: 1;
+  }
+
+  .run-btn {
+    width: 100%;
+    background: linear-gradient(90deg, var(--red), #c0001e);
+    border: none;
+    color: white;
+    padding: 18px;
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    cursor: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    clip-path: polygon(12px 0%, 100% 0%, calc(100% - 12px) 100%, 0% 100%);
+  }
+  .run-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+  }
+  .run-btn:hover::before { transform: translateX(100%); }
+  .run-btn:hover { box-shadow: var(--glow-red), 0 8px 32px rgba(232,0,45,0.3); transform: translateY(-2px); }
+
+  /* ══════════════════════════════
+     PIPELINE
+  ══════════════════════════════ */
+  .pipeline {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 60px;
+    overflow-x: auto;
+    padding-bottom: 20px;
+  }
+
+  .pipeline-step {
+    flex: 1;
+    min-width: 180px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-right: none;
+    padding: 28px 24px;
+    position: relative;
+    transition: background 0.3s;
+  }
+  .pipeline-step:last-child { border-right: 1px solid var(--border); }
+  .pipeline-step:hover { background: var(--bg3); }
+
+  .pipeline-step::after {
+    content: '▶';
+    position: absolute;
+    right: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--red);
+    font-size: 18px;
+    z-index: 1;
+  }
+  .pipeline-step:last-child::after { display: none; }
+
+  .step-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 32px;
+    font-weight: 900;
+    color: rgba(232,0,45,0.15);
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+  .step-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .step-desc {
+    font-size: 13px;
+    color: var(--gray);
+    line-height: 1.5;
+  }
+
+  /* ══════════════════════════════
+     VISUALIZATIONS GRID
+  ══════════════════════════════ */
+  .viz-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+  }
+
+  .viz-card {
+    background: var(--bg2);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+    cursor: none;
+    transition: all 0.4s;
+    group: true;
+  }
+  .viz-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(232,0,45,0.05) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .viz-card:hover::before { opacity: 1; }
+  .viz-card:hover { background: var(--bg3); transform: translateY(-2px); }
+
+  .viz-card-large {
+    grid-column: span 2;
+  }
+
+  .viz-icon {
+    font-size: 32px;
+    margin-bottom: 16px;
+    display: block;
+    transition: transform 0.3s;
+  }
+  .viz-card:hover .viz-icon { transform: scale(1.1); }
+
+  .viz-tag {
+    display: inline-block;
+    background: rgba(232,0,45,0.1);
+    border: 1px solid rgba(232,0,45,0.2);
+    color: var(--red);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 3px 8px;
+    margin-bottom: 12px;
+  }
+
+  .viz-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.3;
+  }
+
+  .viz-desc {
+    color: var(--gray);
+    font-size: 14px;
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  .viz-corner {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 40px; height: 40px;
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+  }
+
+  /* Fake track preview */
+  .track-preview {
+    height: 140px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .track-preview svg { width: 100%; height: 100%; }
+
+  /* ══════════════════════════════
+     ML MODEL SECTION
+  ══════════════════════════════ */
+  .model-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+
+  .feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .feature-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: var(--bg2);
+    border-left: 2px solid transparent;
+    transition: all 0.3s;
+    cursor: none;
+  }
+  .feature-item:hover {
+    border-left-color: var(--red);
+    background: var(--bg3);
+    padding-left: 28px;
+  }
+  .feature-name {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+  }
+  .feature-bar-wrap {
+    width: 120px;
+    height: 4px;
+    background: rgba(255,255,255,0.05);
+    position: relative;
+  }
+  .feature-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--red), var(--blue));
+    transition: width 1s ease;
+  }
+
+  /* Accuracy gauge */
+  .gauge-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  .gauge {
+    width: 200px;
+    height: 200px;
+    position: relative;
+  }
+  .gauge svg { transform: rotate(-90deg); }
+  .gauge-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(0);
+  }
+  .gauge-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 36px;
+    font-weight: 900;
+    color: var(--white);
+  }
+  .gauge-sub {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--gray);
+  }
+
+  /* ══════════════════════════════
+     ROADMAP
+  ══════════════════════════════ */
+  .roadmap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .roadmap-item {
+    display: flex;
+    gap: 20px;
+    padding: 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .roadmap-item::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 0; height: 2px;
+    background: var(--red);
+    transition: width 0.4s;
+  }
+  .roadmap-item:hover::before { width: 100%; }
+  .roadmap-item:hover { background: var(--bg3); }
+
+  .roadmap-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(232,0,45,0.08);
+    border: 1px solid rgba(232,0,45,0.15);
+  }
+
+  .roadmap-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+
+  .roadmap-desc {
+    font-size: 13px;
+    color: var(--gray);
+    line-height: 1.5;
+  }
+
+  /* ══════════════════════════════
+     TECH STACK
+  ══════════════════════════════ */
+  .stack-grid {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+
+  .stack-item {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: all 0.3s;
+    cursor: none;
+    flex: 1;
+    min-width: 120px;
+  }
+  .stack-item:hover {
+    background: var(--bg3);
+    border-color: rgba(232,0,45,0.3);
+    transform: translateY(-4px);
+    box-shadow: var(--glow-red);
+  }
+  .stack-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .stack-role { font-size: 12px; color: var(--gray); }
+
+  /* ══════════════════════════════
+     FOOTER
+  ══════════════════════════════ */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--gray);
+  }
+  .footer-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    font-weight: 900;
+  }
+  .footer-logo span { color: var(--red); }
+
+  /* ══════════════════════════════
+     TERMINAL MODAL
+  ══════════════════════════════ */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(8px);
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .modal-overlay.active { opacity: 1; pointer-events: all; }
+
+  .terminal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    width: 680px;
+    max-width: 90vw;
+    padding: 0;
+    overflow: hidden;
+    transform: translateY(20px);
+    transition: transform 0.3s;
+  }
+  .modal-overlay.active .terminal { transform: translateY(0); }
+
+  .terminal-header {
+    background: var(--bg3);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal-dots { display: flex; gap: 8px; }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .dot.red { background: #ff5f57; }
+  .dot.yellow { background: #febc2e; }
+  .dot.green { background: #28c840; }
+  .terminal-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--gray);
+    letter-spacing: 2px;
+  }
+  .terminal-close {
+    background: none;
+    border: none;
+    color: var(--gray);
+    cursor: none;
+    font-size: 16px;
+    transition: color 0.2s;
+  }
+  .terminal-close:hover { color: var(--white); }
+
+  .terminal-body {
+    padding: 24px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    line-height: 2;
+  }
+  .t-line { color: var(--gray); }
+  .t-line .t-cmd { color: var(--white); }
+  .t-line .t-ok { color: #00ff88; }
+  .t-line .t-val { color: var(--gold); }
+  .t-line .t-red { color: var(--red); }
+
+  .t-cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: var(--red);
+    vertical-align: middle;
+    animation: blink 0.7s step-end infinite;
+  }
+
+  /* ══════════════════════════════
+     TELEMETRY LIVE BARS
+  ══════════════════════════════ */
+  .telemetry-demo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: 60px;
+  }
+
+  .telem-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .telem-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 100%;
+  }
+  .telem-panel.d1::before { background: var(--red); }
+  .telem-panel.d2::before { background: var(--blue); }
+
+  .telem-driver {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 20px;
+  }
+  .telem-panel.d1 .telem-driver { color: var(--red); }
+  .telem-panel.d2 .telem-driver { color: var(--blue); }
+
+  .telem-metric {
+    margin-bottom: 16px;
+  }
+  .telem-metric-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--gray);
+    margin-bottom: 6px;
+  }
+  .telem-metric-val { color: var(--white); font-family: 'Share Tech Mono', monospace; }
+  .telem-bar-bg {
+    height: 6px;
+    background: rgba(255,255,255,0.05);
+  }
+  .telem-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+  }
+  .d1 .telem-bar { background: linear-gradient(90deg, var(--red-dark), var(--red)); }
+  .d2 .telem-bar { background: linear-gradient(90deg, #004db3, var(--blue)); }
+
+  /* ══════════════════════════════
+     ANIMATIONS ON SCROLL
+  ══════════════════════════════ */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .loading-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(5,5,8,.95);
+    z-index:99999;
+
+    display:none;
+    justify-content:center;
+    align-items:center;
+}
+
+.loading-panel{
+    width:700px;
+    text-align:center;
+}
+
+.loading-title{
+    font-family:'Orbitron';
+    font-size:52px;
+    margin-bottom:25px;
+}
+
+#loadingText{
+    color:var(--gray);
+    margin-bottom:20px;
+    letter-spacing:2px;
+}
+
+.loading-bar-wrap{
+    width:100%;
+    height:10px;
+    background:rgba(255,255,255,.08);
+}
+
+.loading-bar{
+    width:0%;
+    height:100%;
+    background:linear-gradient(
+        90deg,
+        var(--red),
+        var(--blue)
+    );
+
+    transition:.3s;
+}
+
+#loadingPercent{
+    margin-top:15px;
+    font-family:'Orbitron';
+    color:var(--red);
+}
+
+.results-grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:24px;
+}
+
+.result-card{
+    background:var(--bg2);
+    border:1px solid var(--border);
+    overflow:hidden;
+}
+
+.result-card.full{
+    grid-column:span 2;
+}
+
+.result-card h3{
+    padding:18px;
+    border-bottom:1px solid var(--border);
+
+    font-family:'Orbitron';
+    letter-spacing:2px;
+    font-size:14px;
+}
+
+.result-card img{
+    width:100%;
+    display:block;
+    transition:.3s;
+}
+
+.result-card:hover img{
+    transform:scale(1.02);
+}
+
+@media(max-width:900px){
+
+    .results-grid{
+        grid-template-columns:1fr;
+    }
+
+    .result-card.full{
+        grid-column:span 1;
+    }
+}
+
+</style>
+</head>
+<body>
+<!-- ===================================== -->
+<!-- LOADING OVERLAY -->
+<!-- ===================================== -->
+
+<div id="loadingOverlay" class="loading-overlay">
+
+  <div class="loading-panel">
+
+    <div class="hero-badge">
+      ● LIVE TELEMETRY ANALYSIS
+    </div>
+
+    <h2 class="loading-title">
+      GENERATING<br>
+      VISUALIZATIONS
+    </h2>
+
+    <div id="loadingText">
+      Initializing...
+    </div>
+
+    <div class="loading-bar-wrap">
+      <div id="loadingBar" class="loading-bar"></div>
+    </div>
+
+    <div id="loadingPercent">
+      0%
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ===================================== -->
+<!-- RESULTS SECTION -->
+<!-- ===================================== -->
+
+<section id="resultsSection" style="display:none">
+
+  <div class="section-label">// 06 — RESULTS</div>
+
+  <h2 class="section-title">
+    ANALYSIS RESULTS
+  </h2>
+
+  <p class="section-desc">
+    Generated telemetry visualizations
+  </p>
+
+  <div class="results-grid">
+
+    <div class="result-card full">
+      <h3>TIME LOSS MAP</h3>
+      <img id="timeLossImg">
+    </div>
+
+    <div class="result-card">
+      <h3>VER SPEED HEATMAP</h3>
+      <img id="verHeatImg">
+    </div>
+
+    <div class="result-card">
+      <h3>NOR SPEED HEATMAP</h3>
+      <img id="norHeatImg">
+    </div>
+
+    <div class="result-card">
+      <h3>VER BRAKING ZONES</h3>
+      <img id="verBrakeImg">
+    </div>
+
+    <div class="result-card">
+      <h3>NOR BRAKING ZONES</h3>
+      <img id="norBrakeImg">
+    </div>
+
+    <div class="result-card full">
+      <h3>SYNCHRONIZED TRACES</h3>
+      <img id="syncImg">
+    </div>
+
+    <div class="result-card">
+      <h3>BRAKING COMPARISON</h3>
+      <img id="comparisonImg">
+    </div>
+
+    <div class="result-card">
+      <h3>BRAKING DISTANCE MARKERS</h3>
+      <img id="distanceImg">
+    </div>
+
+    <div class="result-card">
+      <h3>MODEL VERDICT</h3>
+      <img id="modelImg">
+    </div>
+
+    <div class="result-card">
+      <h3>CONSISTENCY DASHBOARD</h3>
+      <img id="consistencyImg">
+    </div>
+
+    <div class="result-card full">
+      <h3>CORNER CARDS</h3>
+      <img id="cornerImg">
+    </div>
+
+  </div>
+
+</section>
+<!-- CURSOR -->
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- TERMINAL MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="terminal">
+    <div class="terminal-header">
+      <div class="terminal-dots">
+        <div class="dot red"></div>
+        <div class="dot yellow"></div>
+        <div class="dot green"></div>
+      </div>
+      <div class="terminal-title">F1_MAIN.PY — RUNNING</div>
+      <button class="terminal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="terminal-body" id="terminalBody">
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">F1<span>TIS</span></div>
+  <ul class="nav-tabs">
+    <li class="nav-tab active" onclick="scrollTo('hero')">HOME</li>
+    <li class="nav-tab" onclick="scrollTo('configure')">CONFIGURE</li>
+    <li class="nav-tab" onclick="scrollTo('pipeline')">PIPELINE</li>
+    <li class="nav-tab" onclick="scrollTo('visualizations')">VISUALS</li>
+    <li class="nav-tab" onclick="scrollTo('model')">ML MODEL</li>
+    <li class="nav-tab" onclick="scrollTo('roadmap')">ROADMAP</li>
+  </ul>
+  <div class="nav-status">
+    <div class="nav-status-dot"></div>
+    SYSTEM ONLINE
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero" id="hero">
+  <div class="hero-bg"></div>
+  <div class="racing-lines" id="racingLines"></div>
+  <div class="rpm-ring"></div>
+  <div class="rpm-ring"></div>
+  <div class="rpm-ring"></div>
+
+  <div class="hero-content">
+    <div class="hero-badge">● LIVE TELEMETRY ANALYSIS</div>
+    <h1 class="hero-title">
+      <span class="line1">F1 TELEMETRY</span>
+      <span class="line2">INTELLIGENCE</span>
+      <span class="line3">SYSTEM v2.0</span>
+    </h1>
+    <p class="hero-sub">
+      Segment-level driver comparison using <span>braking zones</span>,
+      <span>speed heatmaps</span> &amp; <span>machine learning</span>
+    </p>
+    <div class="hero-ctas">
+      <button class="btn-primary" onclick="scrollTo('configure')">LAUNCH ANALYSIS</button>
+      <button class="btn-secondary" onclick="scrollTo('pipeline')">HOW IT WORKS</button>
+    </div>
+  </div>
+
+  <div class="scroll-hint">SCROLL</div>
+</div>
+
+<!-- STATS TICKER -->
+<div class="stats-bar">
+  <div class="stats-ticker" id="ticker">
+    <div class="stat-item"><span class="stat-label">FRAMEWORK</span><span class="stat-sep">|</span><span class="stat-value">FASTF1</span></div>
+    <div class="stat-item"><span class="stat-label">MODEL</span><span class="stat-sep">|</span><span class="stat-value">RANDOM FOREST</span></div>
+    <div class="stat-item"><span class="stat-label">ESTIMATORS</span><span class="stat-sep">|</span><span class="stat-value">200</span></div>
+    <div class="stat-item"><span class="stat-label">FEATURES</span><span class="stat-sep">|</span><span class="stat-value">6</span></div>
+    <div class="stat-item"><span class="stat-label">VISUALIZATIONS</span><span class="stat-sep">|</span><span class="stat-value">9</span></div>
+    <div class="stat-item"><span class="stat-label">DATA SOURCE</span><span class="stat-sep">|</span><span class="stat-value">OFFICIAL F1 TELEMETRY</span></div>
+    <div class="stat-item"><span class="stat-label">SEGMENTATION</span><span class="stat-sep">|</span><span class="stat-value">BRAKING ZONES</span></div>
+    <div class="stat-item"><span class="stat-label">DEG CORRECTION</span><span class="stat-sep">|</span><span class="stat-value">LINEAR DETREND</span></div>
+    <!-- duplicate for seamless loop -->
+    <div class="stat-item"><span class="stat-label">FRAMEWORK</span><span class="stat-sep">|</span><span class="stat-value">FASTF1</span></div>
+    <div class="stat-item"><span class="stat-label">MODEL</span><span class="stat-sep">|</span><span class="stat-value">RANDOM FOREST</span></div>
+    <div class="stat-item"><span class="stat-label">ESTIMATORS</span><span class="stat-sep">|</span><span class="stat-value">200</span></div>
+    <div class="stat-item"><span class="stat-label">FEATURES</span><span class="stat-sep">|</span><span class="stat-value">6</span></div>
+    <div class="stat-item"><span class="stat-label">VISUALIZATIONS</span><span class="stat-sep">|</span><span class="stat-value">9</span></div>
+    <div class="stat-item"><span class="stat-label">DATA SOURCE</span><span class="stat-sep">|</span><span class="stat-value">OFFICIAL F1 TELEMETRY</span></div>
+    <div class="stat-item"><span class="stat-label">SEGMENTATION</span><span class="stat-sep">|</span><span class="stat-value">BRAKING ZONES</span></div>
+    <div class="stat-item"><span class="stat-label">DEG CORRECTION</span><span class="stat-sep">|</span><span class="stat-value">LINEAR DETREND</span></div>
+  </div>
+</div>
+
+<!-- CONFIGURE -->
+<section id="configure">
+  <div class="reveal">
+    <div class="section-label">// 01 — CONFIGURE</div>
+    <h2 class="section-title">SESSION SETUP</h2>
+    <p class="section-desc">Select your circuit, season, session type and drivers. The system will pull official telemetry and run the full analysis pipeline.</p>
+  </div>
+
+  <div class="config-panel reveal">
+    <div class="config-grid">
+      <div class="field-group">
+        <label class="field-label">CIRCUIT</label>
+        <input class="field-input" type="text" placeholder="e.g. Suzuka" id="circuitInput">
+      </div>
+      <div class="field-group">
+        <label class="field-label">SEASON</label>
+        <input class="field-input" type="number" placeholder="2025" id="seasonInput" value="2025">
+      </div>
+      <div class="field-group">
+        <label class="field-label">SESSION TYPE</label>
+        <select class="field-input" id="sessionInput">
+          <option value="R">R — Race</option>
+          <option value="Q">Q — Qualifying</option>
+          <option value="FP1">FP1 — Practice 1</option>
+          <option value="FP2">FP2 — Practice 2</option>
+          <option value="FP3">FP3 — Practice 3</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">GENERATED COMMAND</label>
+        <input class="field-input" type="text" id="cmdOutput" readonly style="color: var(--red); font-size:11px;">
+      </div>
+    </div>
+
+    <div class="driver-row">
+      <div class="driver-card d1">
+        <span class="driver-number">01</span>
+        <label class="field-label">DRIVER 1</label>
+        <input class="field-input" type="text" placeholder="e.g. VER" id="d1Input" maxlength="3" style="text-transform:uppercase; font-size:20px; font-weight:700;">
+      </div>
+      <div class="vs-badge">VS</div>
+      <div class="driver-card d2">
+        <span class="driver-number">02</span>
+        <label class="field-label">DRIVER 2</label>
+        <input class="field-input" type="text" placeholder="e.g. NOR" id="d2Input" maxlength="3" style="text-transform:uppercase; font-size:20px; font-weight:700;">
+      </div>
+    </div>
+
+    <button class="run-btn" onclick="runAnalysis()">▶ EXECUTE ANALYSIS</button>
+  </div>
+
+  <!-- Live telemetry demo bars -->
+  <div class="telemetry-demo reveal">
+    <div class="telem-panel d1">
+      <div class="telem-driver" id="d1Label">DRIVER 1</div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>SPEED</span><span class="telem-metric-val" id="d1speed">-- km/h</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d1speedBar" style="width:0%"></div></div>
+      </div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>THROTTLE</span><span class="telem-metric-val" id="d1thr">-- %</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d1thrBar" style="width:0%"></div></div>
+      </div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>BRAKE</span><span class="telem-metric-val" id="d1brk">--</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d1brkBar" style="width:0%"></div></div>
+      </div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>CONSISTENCY SCORE</span><span class="telem-metric-val" id="d1cons">--</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d1consBar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="telem-panel d2">
+      <div class="telem-driver" id="d2Label">DRIVER 2</div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>SPEED</span><span class="telem-metric-val" id="d2speed">-- km/h</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d2speedBar" style="width:0%"></div></div>
+      </div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>THROTTLE</span><span class="telem-metric-val" id="d2thr">-- %</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d2thrBar" style="width:0%"></div></div>
+      </div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>BRAKE</span><span class="telem-metric-val" id="d2brk">--</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d2brkBar" style="width:0%"></div></div>
+      </div>
+      <div class="telem-metric">
+        <div class="telem-metric-header"><span>CONSISTENCY SCORE</span><span class="telem-metric-val" id="d2cons">--</span></div>
+        <div class="telem-bar-bg"><div class="telem-bar" id="d2consBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<div style="background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+<section id="pipeline">
+  <div class="reveal">
+    <div class="section-label">// 02 — ARCHITECTURE</div>
+    <h2 class="section-title">ANALYSIS PIPELINE</h2>
+    <p class="section-desc">Five stages from raw session data to actionable insight. Each stage feeds directly into the next.</p>
+  </div>
+
+  <div class="pipeline reveal">
+    <div class="pipeline-step">
+      <div class="step-num">01</div>
+      <div class="step-title">SESSION LOAD</div>
+      <div class="step-desc">FastF1 pulls official telemetry. All quick laps cached locally for speed.</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">02</div>
+      <div class="step-title">SEGMENTATION</div>
+      <div class="step-desc">Every brake event is a boundary. Lap split into corner-level segments.</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">03</div>
+      <div class="step-title">FEATURE ENG.</div>
+      <div class="step-desc">Speed, throttle, brake ratio, segment length extracted per segment.</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">04</div>
+      <div class="step-title">RF CLASSIFIER</div>
+      <div class="step-desc">200-tree Random Forest predicts faster driver per segment. 80/20 split.</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="step-num">05</div>
+      <div class="step-title">VISUALIZATION</div>
+      <div class="step-desc">9 plot types render the full picture — track maps, traces, cards, dashboard.</div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- VISUALIZATIONS -->
+<section id="visualizations">
+  <div class="reveal">
+    <div class="section-label">// 03 — OUTPUT</div>
+    <h2 class="section-title">VISUALIZATION SUITE</h2>
+    <p class="section-desc">Nine purpose-built plots. Each one answers a specific question about where time is won and lost.</p>
+  </div>
+
+  <div class="viz-grid reveal">
+    <div class="viz-card viz-card-large">
+      <div class="track-preview">
+        <svg viewBox="0 0 400 140" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="speedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#e8002d"/>
+              <stop offset="30%" style="stop-color:#ffd700"/>
+              <stop offset="60%" style="stop-color:#00cc44"/>
+              <stop offset="100%" style="stop-color:#e8002d"/>
+            </linearGradient>
+          </defs>
+          <path d="M 30 100 Q 80 20 140 60 Q 200 100 240 40 Q 280 0 340 70 Q 370 90 370 100" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="18"/>
+          <path d="M 30 100 Q 80 20 140 60 Q 200 100 240 40 Q 280 0 340 70 Q 370 90 370 100" fill="none" stroke="url(#speedGrad)" stroke-width="5" stroke-linecap="round">
+            <animate attributeName="stroke-dasharray" values="0,1000;800,200" dur="2s" fill="freeze"/>
+          </path>
+          <text x="20" y="130" fill="rgba(255,255,255,0.2)" font-family="Share Tech Mono" font-size="10">SPEED HEATMAP</text>
+        </svg>
+      </div>
+      <div class="viz-tag">TRACK MAP</div>
+      <div class="viz-title">SPEED HEATMAP</div>
+      <div class="viz-desc">The actual GPS racing line colored by speed — red where the driver is scrubbing speed, green where they're carrying it. One glance tells you which corners are costing them.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card">
+      <span class="viz-icon">📍</span>
+      <div class="viz-tag">BRAKING</div>
+      <div class="viz-title">BRAKING ZONE MAP</div>
+      <div class="viz-desc">Red dots on the track where each driver initiates braking. Per driver and head-to-head.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card">
+      <span class="viz-icon">⏱️</span>
+      <div class="viz-tag">DELTA</div>
+      <div class="viz-title">TIME LOSS MAP</div>
+      <div class="viz-desc">Delta time between drivers painted onto the racing line. Exactly where time is gained or surrendered.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card">
+      <span class="viz-icon">📏</span>
+      <div class="viz-tag">BRAKING</div>
+      <div class="viz-title">BRAKING DISTANCE MARKERS</div>
+      <div class="viz-desc">Who brakes later at each corner, annotated directly on the track map in metres.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card viz-card-large">
+      <span class="viz-icon">📊</span>
+      <div class="viz-tag">TELEMETRY</div>
+      <div class="viz-title">SYNCHRONIZED TRACES</div>
+      <div class="viz-desc">Speed, throttle, and brake for both drivers overlaid in three synchronized panels, aligned by distance. Trail braking, early throttle, and lift points are all immediately visible.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card">
+      <span class="viz-icon">🃏</span>
+      <div class="viz-tag">CORNER</div>
+      <div class="viz-title">CORNER CARDS</div>
+      <div class="viz-desc">One card per corner — braking point, min speed, exit throttle. Winner of each metric highlighted.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card viz-card-large">
+      <span class="viz-icon">📈</span>
+      <div class="viz-tag">CONSISTENCY</div>
+      <div class="viz-title">CONSISTENCY DASHBOARD</div>
+      <div class="viz-desc">All quick laps overlaid with mean and ±1 std band. Tire degradation detrended before scoring. Verdict shows who is genuinely more consistent — not just who paced down more smoothly. Covers speed, throttle, and brake independently.</div>
+      <div class="viz-corner"></div>
+    </div>
+
+    <div class="viz-card">
+      <span class="viz-icon">🤖</span>
+      <div class="viz-tag">ML</div>
+      <div class="viz-title">MODEL VERDICT</div>
+      <div class="viz-desc">Random Forest prediction plotted per segment — which driver the model picks as faster through each section.</div>
+      <div class="viz-corner"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ML MODEL -->
+<div style="background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+<section id="model">
+  <div class="reveal">
+    <div class="section-label">// 04 — MACHINE LEARNING</div>
+    <h2 class="section-title">THE MODEL</h2>
+    <p class="section-desc">A Random Forest trained on segment-level features from all quick laps. Not one lap — the whole race.</p>
+  </div>
+
+  <div class="model-layout reveal">
+    <div>
+      <div style="font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:3px; color:var(--gray); margin-bottom:20px;">FEATURE IMPORTANCES</div>
+      <div class="feature-list">
+        <div class="feature-item">
+          <span class="feature-name">avg_speed</span>
+          <div class="feature-bar-wrap"><div class="feature-bar" style="width:88%"></div></div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-name">min_speed</span>
+          <div class="feature-bar-wrap"><div class="feature-bar" style="width:82%"></div></div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-name">max_speed</span>
+          <div class="feature-bar-wrap"><div class="feature-bar" style="width:74%"></div></div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-name">avg_throttle</span>
+          <div class="feature-bar-wrap"><div class="feature-bar" style="width:61%"></div></div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-name">brake_ratio</span>
+          <div class="feature-bar-wrap"><div class="feature-bar" style="width:52%"></div></div>
+        </div>
+        <div class="feature-item">
+          <span class="feature-name">segment_length</span>
+          <div class="feature-bar-wrap"><div class="feature-bar" style="width:38%"></div></div>
+        </div>
+      </div>
+
+      <div style="margin-top:32px; padding:20px; background:var(--bg3); border-left:2px solid var(--red);">
+        <div style="font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px; color:var(--gray); margin-bottom:8px;">MODEL CONFIG</div>
+        <div style="font-family:'Share Tech Mono',monospace; font-size:13px; line-height:2; color:var(--white);">
+          n_estimators = <span style="color:var(--gold)">200</span><br>
+          max_depth = <span style="color:var(--gold)">6</span><br>
+          test_size = <span style="color:var(--gold)">0.2</span><br>
+          stratify = <span style="color:var(--gold)">True</span><br>
+          random_state = <span style="color:var(--gold)">42</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="gauge-wrap">
+      <div style="font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:3px; color:var(--gray); margin-bottom:4px;">MODEL ACCURACY</div>
+      <div class="gauge">
+        <svg viewBox="0 0 200 200" width="200" height="200">
+          <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"/>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="url(#gaugeGrad)" stroke-width="12"
+            stroke-dasharray="452" stroke-dashoffset="90"
+            stroke-linecap="round">
+            <animate attributeName="stroke-dashoffset" from="452" to="90" dur="2s" ease="ease-out" fill="freeze"/>
+          </circle>
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:var(--red)"/>
+              <stop offset="100%" style="stop-color:var(--blue)"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="gauge-label">
+          <div class="gauge-num">~80<span style="font-size:20px">%</span></div>
+          <div class="gauge-sub">ACCURACY</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:2px; width:100%;">
+        <div style="background:var(--bg3); padding:20px; text-align:center;">
+          <div style="font-family:'Orbitron',monospace; font-size:28px; font-weight:900; color:var(--red);">6</div>
+          <div style="font-size:12px; letter-spacing:2px; color:var(--gray);">FEATURES</div>
+        </div>
+        <div style="background:var(--bg3); padding:20px; text-align:center;">
+          <div style="font-family:'Orbitron',monospace; font-size:28px; font-weight:900; color:var(--blue);">200</div>
+          <div style="font-size:12px; letter-spacing:2px; color:var(--gray);">TREES</div>
+        </div>
+        <div style="background:var(--bg3); padding:20px; text-align:center;">
+          <div style="font-family:'Orbitron',monospace; font-size:28px; font-weight:900; color:var(--gold);">80/20</div>
+          <div style="font-size:12px; letter-spacing:2px; color:var(--gray);">SPLIT</div>
+        </div>
+        <div style="background:var(--bg3); padding:20px; text-align:center;">
+          <div style="font-family:'Orbitron',monospace; font-size:28px; font-weight:900; color:var(--white);">2</div>
+          <div style="font-size:12px; letter-spacing:2px; color:var(--gray);">CLASSES</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="reveal">
+    <div class="section-label">// 05 — COMING NEXT</div>
+    <h2 class="section-title">ROADMAP</h2>
+    <p class="section-desc">Planned features in order of priority. The ML section is next.</p>
+  </div>
+
+  <div class="roadmap reveal">
+    <div class="roadmap-item">
+      <div class="roadmap-icon">🧬</div>
+      <div>
+        <div class="roadmap-title">DRIVER FINGERPRINTING</div>
+        <div class="roadmap-desc">Unsupervised KMeans clustering on telemetry patterns. Can a model identify a driver purely from how they drive — with no labels?</div>
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">🔍</div>
+      <div>
+        <div class="roadmap-title">ANOMALY DETECTION</div>
+        <div class="roadmap-desc">Isolation Forest trained on normal laps. Automatically flags lock-ups, traffic, and mistakes — with the exact track location.</div>
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">🧠</div>
+      <div>
+        <div class="roadmap-title">SHAP EXPLAINABILITY</div>
+        <div class="roadmap-desc">Plug SHAP into the existing Random Forest. Shows not just who's faster per segment, but why — was it braking point, apex speed, or exit throttle?</div>
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">🔥</div>
+      <div>
+        <div class="roadmap-title">OVERTAKING OPPORTUNITY MAP</div>
+        <div class="roadmap-desc">Combine speed delta, DRS zones, and braking point data to score every track section for attack likelihood.</div>
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">🏎️</div>
+      <div>
+        <div class="roadmap-title">OPTIMAL LAP RECONSTRUCTION</div>
+        <div class="roadmap-desc">Stitch together the best sector from each lap across a stint to simulate the theoretical fastest possible lap.</div>
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">📉</div>
+      <div>
+        <div class="roadmap-title">TIRE DEG MODELLING</div>
+        <div class="roadmap-desc">Fit exponential regression to lap time progression. Predict when pace drops below a target threshold per compound.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tech Stack -->
+  <div style="margin-top:60px;" class="reveal">
+    <div style="font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:3px; color:var(--gray); margin-bottom:16px;">TECH STACK</div>
+    <div class="stack-grid">
+      <div class="stack-item"><div class="stack-name">PYTHON</div><div class="stack-role">Core language</div></div>
+      <div class="stack-item"><div class="stack-name">FASTF1</div><div class="stack-role">Telemetry API</div></div>
+      <div class="stack-item"><div class="stack-name">SCIKIT-LEARN</div><div class="stack-role">ML pipeline</div></div>
+      <div class="stack-item"><div class="stack-name">MATPLOTLIB</div><div class="stack-role">Visualization</div></div>
+      <div class="stack-item"><div class="stack-name">SCIPY</div><div class="stack-role">Interpolation</div></div>
+      <div class="stack-item"><div class="stack-name">PANDAS</div><div class="stack-role">Data wrangling</div></div>
+      <div class="stack-item"><div class="stack-name">NUMPY</div><div class="stack-role">Numerics</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">F1<span>TIS</span> — Telemetry Intelligence System</div>
+  <div style="font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:2px;">BUILT WITH FASTF1 + SCIKIT-LEARN</div>
+  <div style="font-family:'Share Tech Mono',monospace; font-size:11px;">v2.0</div>
+</footer>
+
+<script>
+  // ── CURSOR ──
+  const cursor = document.getElementById('cursor');
+  const ring = document.getElementById('cursorRing');
+  let mx = 0, my = 0, rx = 0, ry = 0;
+  document.addEventListener('mousemove', e => {
+    mx = e.clientX; my = e.clientY;
+    cursor.style.left = mx - 6 + 'px';
+    cursor.style.top  = my - 6 + 'px';
+  });
+  setInterval(() => {
+    rx += (mx - rx) * 0.15;
+    ry += (my - ry) * 0.15;
+    ring.style.left = rx - 18 + 'px';
+    ring.style.top  = ry - 18 + 'px';
+  }, 16);
+  document.querySelectorAll('button, a, .nav-tab, .viz-card, .roadmap-item, .stack-item').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      cursor.style.transform = 'scale(2)';
+      ring.style.transform = 'scale(1.5)';
+      ring.style.borderColor = 'rgba(232,0,45,0.8)';
+    });
+    el.addEventListener('mouseleave', () => {
+      cursor.style.transform = 'scale(1)';
+      ring.style.transform = 'scale(1)';
+      ring.style.borderColor = 'rgba(232,0,45,0.5)';
+    });
+  });
+
+  // ── RACING LINES ──
+  const linesContainer = document.getElementById('racingLines');
+  const linePositions = [15, 25, 40, 55, 65, 75, 85];
+  linePositions.forEach((top, i) => {
+    const line = document.createElement('div');
+    line.className = 'racing-line';
+    line.style.cssText = `top:${top}%; width:${200 + Math.random()*200}px; animation-delay:${i * 0.7}s; animation-duration:${2.5 + Math.random()}s; opacity:${0.2 + Math.random()*0.4}`;
+    linesContainer.appendChild(line);
+  });
+
+  // ── SMOOTH SCROLL ──
+  function scrollTo(id) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    event && event.target.classList.add('active');
+  }
+
+  // ── COMMAND GENERATOR ──
+  function updateCmd() {
+    const c  = document.getElementById('circuitInput').value || 'Suzuka';
+    const s  = document.getElementById('seasonInput').value || '2025';
+    const st = document.getElementById('sessionInput').value || 'R';
+    const d1 = (document.getElementById('d1Input').value || 'VER').toUpperCase();
+    const d2 = (document.getElementById('d2Input').value || 'NOR').toUpperCase();
+    document.getElementById('cmdOutput').value = `python F1_main.py  # ${c} · ${s} · ${st} · ${d1} vs ${d2}`;
+    document.getElementById('d1Label').textContent = d1 || 'DRIVER 1';
+    document.getElementById('d2Label').textContent = d2 || 'DRIVER 2';
+  }
+  ['circuitInput','seasonInput','sessionInput','d1Input','d2Input'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateCmd);
+    document.getElementById(id).addEventListener('change', updateCmd);
+  });
+  updateCmd();
+
+  // ── ANIMATED TELEMETRY BARS (demo) ──
+  function animateBars() {
+    const vals = {
+      d1speed: [180 + Math.random()*120, 320],
+      d1thr:   [60 + Math.random()*40, 100],
+      d1brk:   [Math.random() > 0.7 ? 100 : 0, 100],
+      d1cons:  [72 + Math.random()*20, 100],
+      d2speed: [180 + Math.random()*120, 320],
+      d2thr:   [60 + Math.random()*40, 100],
+      d2brk:   [Math.random() > 0.7 ? 100 : 0, 100],
+      d2cons:  [72 + Math.random()*20, 100],
+    };
+    document.getElementById('d1speed').textContent = Math.round(vals.d1speed[0]) + ' km/h';
+    document.getElementById('d1thr').textContent   = Math.round(vals.d1thr[0]) + ' %';
+    document.getElementById('d1brk').textContent   = vals.d1brk[0] > 50 ? 'ON' : 'OFF';
+    document.getElementById('d1cons').textContent  = Math.round(vals.d1cons[0]) + '/100';
+    document.getElementById('d2speed').textContent = Math.round(vals.d2speed[0]) + ' km/h';
+    document.getElementById('d2thr').textContent   = Math.round(vals.d2thr[0]) + ' %';
+    document.getElementById('d2brk').textContent   = vals.d2brk[0] > 50 ? 'ON' : 'OFF';
+    document.getElementById('d2cons').textContent  = Math.round(vals.d2cons[0]) + '/100';
+
+    document.getElementById('d1speedBar').style.width = (vals.d1speed[0]/vals.d1speed[1]*100) + '%';
+    document.getElementById('d1thrBar').style.width   = vals.d1thr[0] + '%';
+    document.getElementById('d1brkBar').style.width   = vals.d1brk[0] + '%';
+    document.getElementById('d1consBar').style.width  = vals.d1cons[0] + '%';
+    document.getElementById('d2speedBar').style.width = (vals.d2speed[0]/vals.d2speed[1]*100) + '%';
+    document.getElementById('d2thrBar').style.width   = vals.d2thr[0] + '%';
+    document.getElementById('d2brkBar').style.width   = vals.d2brk[0] + '%';
+    document.getElementById('d2consBar').style.width  = vals.d2cons[0] + '%';
+  }
+  setInterval(animateBars, 800);
+  animateBars();
+
+  // ── TERMINAL / MODAL ──
+  const lines = [
+    { text: '$ python F1_main.py', type: 'cmd', delay: 100 },
+    { text: '[FastF1] Cache enabled at: ./cache', type: 'ok', delay: 600 },
+    { text: 'Loading session: SUZUKA 2025 R...', type: '', delay: 1000 },
+    { text: '[FastF1] Session loaded in 2.4s', type: 'ok', delay: 1800 },
+    { text: 'Picking quick laps: VER (18 laps)', type: '', delay: 2200 },
+    { text: 'Picking quick laps: NOR (17 laps)', type: '', delay: 2600 },
+    { text: 'Segmenting by braking zones...', type: '', delay: 3000 },
+    { text: 'Total segments extracted: 1,247', type: 'val', delay: 3600 },
+    { text: 'Extracting features per segment...', type: '', delay: 4000 },
+    { text: 'Dataset shape: (1247, 8)', type: 'val', delay: 4600 },
+    { text: 'Training RandomForestClassifier...', type: '', delay: 5000 },
+    { text: 'Accuracy: 0.813', type: 'ok', delay: 6200 },
+    { text: 'Rendering 9 visualization plots...', type: '', delay: 6800 },
+    { text: '✓ Analysis complete.', type: 'ok', delay: 7800 },
+  ];
+
+  async function runAnalysis(){
+
+    document.getElementById(
+        "loadingOverlay"
+    ).style.display = "flex";
+
+    const circuit =
+        document.getElementById("circuitInput").value || "Suzuka";
+
+    const season =
+        document.getElementById("seasonInput").value || "2025";
+
+    const session_type =
+        document.getElementById("sessionInput").value || "R";
+
+    const driver1 =
+        document.getElementById("d1Input").value || "VER";
+
+    const driver2 =
+        document.getElementById("d2Input").value || "NOR";
+
+    const response = await fetch("/run",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body:JSON.stringify({
+            circuit,
+            season,
+            session_type,
+            driver1,
+            driver2
+        })
+    });
+
+    const reader =
+        response.body.getReader();
+
+    const decoder =
+        new TextDecoder();
+
+    let runId = null;
+
+    let saved = 0;
+    const totalPlots = 10;
+
+    while(true){
+
+        const {value,done} =
+            await reader.read();
+
+        if(done) break;
+
+        const chunk =
+            decoder.decode(value);
+
+        const lines =
+            chunk.split("\n");
+
+        for(const line of lines){
+
+            if(!line.startsWith("data:"))
+                continue;
+
+            const data =
+                JSON.parse(
+                    line.replace("data: ","")
+                );
+
+            if(data.type === "run_id"){
+                runId = data.run_id;
+            }
+
+            if(
+                data.text &&
+                data.text.includes("[SAVED]")
+            ){
+
+                saved++;
+
+                const percent =
+                    Math.min(
+                        100,
+                        Math.round(
+                            saved / totalPlots * 100
+                        )
+                    );
+
+                document.getElementById(
+                    "loadingBar"
+                ).style.width =
+                    percent + "%";
+
+                document.getElementById(
+                    "loadingPercent"
+                ).innerText =
+                    percent + "%";
+
+                document.getElementById(
+                    "loadingText"
+                ).innerText =
+                    data.text;
+            }
+
+            if(data.type === "done"){
+
+                document.getElementById(
+                    "loadingOverlay"
+                ).style.display = "none";
+
+                await loadResults(
+                    data.run_id
+                );
+            }
+        }
+    }
+}
+
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('active');
+  }
+  document.getElementById('modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal')) closeModal();
+  });
+
+  // ── SCROLL REVEAL ──
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        const delay = Array.from(e.target.parentElement.children).indexOf(e.target) * 100;
+        e.target.style.transitionDelay = delay + 'ms';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // ── NAV ACTIVE ON SCROLL ──
+  const sections = ['hero','configure','pipeline','visualizations','model','roadmap'];
+  const navTabs = document.querySelectorAll('.nav-tab');
+  window.addEventListener('scroll', () => {
+    let current = '';
+    sections.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && window.scrollY >= el.offsetTop - 200) current = id;
+    });
+    navTabs.forEach((tab, i) => {
+      tab.classList.toggle('active', sections[i] === current);
+    });
+  });
+  async function loadResults(runId){
+
+    const base =
+        `/plots/${runId}`;
+
+    document.getElementById(
+        "timeLossImg"
+    ).src =
+        `${base}/time_loss_map.png`;
+
+    document.getElementById(
+        "verHeatImg"
+    ).src =
+        `${base}/VER_speed_heatmap.png`;
+
+    document.getElementById(
+        "norHeatImg"
+    ).src =
+        `${base}/NOR_speed_heatmap.png`;
+
+    document.getElementById(
+        "verBrakeImg"
+    ).src =
+        `${base}/VER_braking_zones.png`;
+
+    document.getElementById(
+        "norBrakeImg"
+    ).src =
+        `${base}/NOR_braking_zones.png`;
+
+    document.getElementById(
+        "syncImg"
+    ).src =
+        `${base}/synchronized_traces.png`;
+
+    document.getElementById(
+        "comparisonImg"
+    ).src =
+        `${base}/braking_comparison.png`;
+
+    document.getElementById(
+        "distanceImg"
+    ).src =
+        `${base}/braking_distance_markers.png`;
+
+    document.getElementById(
+        "modelImg"
+    ).src =
+        `${base}/model_verdict.png`;
+
+    document.getElementById(
+        "consistencyImg"
+    ).src =
+        `${base}/consistency_dashboard.png`;
+
+    document.getElementById(
+        "cornerImg"
+    ).src =
+        `${base}/corner_cards.png`;
+
+    document.getElementById(
+        "resultsSection"
+    ).style.display = "block";
+
+    document.getElementById(
+        "resultsSection"
+    ).scrollIntoView({
+        behavior:"smooth"
+    });
+}
+</script>
+</body>
+</html>

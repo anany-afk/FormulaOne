@@ -1,7 +1,7 @@
 # 🏎️ F1 Telemetry Intelligence System
 
 A machine learning–driven Formula 1 telemetry analysis project that compares driver performance at a segment level using braking zones and telemetry data.
-![Project Demo](assets/consistency_dashboard.png)
+![Project Demo](assets/consistency.png)
 ---
 
 ## 🚀 Features
